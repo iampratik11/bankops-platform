@@ -1,0 +1,29 @@
+name: BankOps CI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Ansible
+    runs-on: [self-hosted, linux, x64, bankops-lab]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check Ansible deployment playbook
+        run: ansible-playbook ansible/playbooks/deploy-core.yml --syntax-check
+
+      - name: Check Ansible verification playbook
+        run: ansible-playbook ansible/playbooks/verify-core.yml --syntax-check
+
+      - name: Check Vault file header
+        run: |
+          head -n 1 k8s/base/mysql/secret.yaml.vault | grep -q '^\$ANSIBLE_VAULT;'
