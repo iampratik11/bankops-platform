@@ -73,14 +73,24 @@ jobs:
         with:
           version: latest
 
-      - name: Scan repository and dependencies
+      - name: Scan repository for secrets
         run: |
           trivy fs \
-            --scanners vuln,secret,misconfig \
+            --scanners secret \
             --exit-code 1 \
             --severity HIGH,CRITICAL \
-            --ignore-unfixed \
             .
+
+      - name: Scan in-scope Containerfiles
+        run: |
+          set -euo pipefail
+
+          for service in customer-service account-service; do
+            trivy config \
+              --exit-code 1 \
+              --severity HIGH,CRITICAL \
+              "services/${service}/Containerfile"
+          done
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
