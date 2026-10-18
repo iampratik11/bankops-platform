@@ -12,7 +12,7 @@ permissions:
 jobs:
   validate:
     name: Validate Ansible
-    runs-on: [self-hosted, linux, x64, bankops-lab]
+    runs-on: [self-hosted, linux, x64]
 
     steps:
       - name: Checkout repository
