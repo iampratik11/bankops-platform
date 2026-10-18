@@ -8,22 +8,130 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
-  validate:
-    name: Validate Ansible
-    runs-on: [self-hosted, linux, x64]
+  build-test-scan-publish:
+    name: Build, Test, Scan and Publish
+    runs-on: [self-hosted, Linux, X64]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Check Ansible deployment playbook
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Record source revision
+        run: |
+          echo "COMMIT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "Building commit: $(git rev-parse HEAD)"
+
+      - name: Validate Ansible deployment playbook
         run: ansible-playbook ansible/playbooks/deploy-core.yml --syntax-check
 
-      - name: Check Ansible verification playbook
+      - name: Validate Ansible verification playbook
         run: ansible-playbook ansible/playbooks/verify-core.yml --syntax-check
 
-      - name: Check Vault file header
+      - name: Validate Vault file header
         run: |
-          head -n 1 k8s/base/mysql/secret.yaml.vault | grep -q '^\$ANSIBLE_VAULT;'
+          head -n 1 k8s/base/mysql/secret.yaml.vault |
+            grep -q '^\$ANSIBLE_VAULT;'
+
+      - name: Build and run unit tests
+        run: mvn -B -ntp -pl services/customer-service,services/account-service -am clean verify
+
+      - name: Upload JUnit test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-reports-${{ github.sha }}
+          path: |
+            services/customer-service/target/surefire-reports/
+            services/account-service/target/surefire-reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload application JARs
+        uses: actions/upload-artifact@v4
+        with:
+          name: bankops-jars-${{ github.sha }}
+          path: |
+            services/customer-service/target/customer-service-*.jar
+            services/account-service/target/account-service-*.jar
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.3
+        with:
+          version: latest
+
+      - name: Scan repository and dependencies
+        run: |
+          trivy fs \
+            --scanners vuln,secret,misconfig \
+            --exit-code 1 \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            .
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build service images
+        env:
+          IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          IMAGE_PREFIX="$(printf '%s' "$IMAGE_PREFIX" | tr '[:upper:]' '[:lower:]')"
+
+          for service in customer-service account-service; do
+            docker build \
+              -f "services/${service}/Containerfile" \
+              -t "${IMAGE_PREFIX}/${service}:sha-${COMMIT_SHA}" \
+              "services/${service}"
+          done
+
+      - name: Scan service images
+        env:
+          IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          IMAGE_PREFIX="$(printf '%s' "$IMAGE_PREFIX" | tr '[:upper:]' '[:lower:]')"
+
+          for service in customer-service account-service; do
+            trivy image \
+              --exit-code 1 \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed \
+              "${IMAGE_PREFIX}/${service}:sha-${COMMIT_SHA}"
+          done
+
+      - name: Publish images to GHCR
+        env:
+          IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          IMAGE_PREFIX="$(printf '%s' "$IMAGE_PREFIX" | tr '[:upper:]' '[:lower:]')"
+
+          for service in customer-service account-service; do
+            docker push "${IMAGE_PREFIX}/${service}:sha-${COMMIT_SHA}"
+          done
+
+      - name: Print build provenance
+        run: |
+          echo "Commit SHA: ${COMMIT_SHA}"
+          echo "JUnit reports and JARs are available as workflow artifacts."
+          echo "Published image tags use sha-${COMMIT_SHA}."
