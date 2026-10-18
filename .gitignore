@@ -1,0 +1,17 @@
+target/
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+.idea/
+.vscode/
+.DS_Store
+secrets/
+*.pem
+*.key
+
+# Local Kubernetes secrets — never commit
+k8s/base/mysql/secret.yaml
+*.secret.yaml

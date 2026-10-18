@@ -1,0 +1,91 @@
+---
+- name: Verify BankOps core services
+  hosts: local
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Check Kubernetes node
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - get
+          - nodes
+      register: nodes
+      changed_when: false
+
+    - name: Show Kubernetes node status
+      ansible.builtin.debug:
+        var: nodes.stdout_lines
+
+    - name: Check MySQL StatefulSet
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - get
+          - statefulset
+          - mysql
+      register: mysql_status
+      changed_when: false
+
+    - name: Show MySQL status
+      ansible.builtin.debug:
+        var: mysql_status.stdout_lines
+
+    - name: Check Customer Service Deployment
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - get
+          - deployment
+          - customer-service
+      register: customer_status
+      changed_when: false
+
+    - name: Show Customer Service status
+      ansible.builtin.debug:
+        var: customer_status.stdout_lines
+
+    - name: Check core service pods
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - get
+          - pods
+          - -l
+          - app=mysql
+          - -o
+          - wide
+      register: mysql_pods
+      changed_when: false
+
+    - name: Show MySQL pods
+      ansible.builtin.debug:
+        var: mysql_pods.stdout_lines
+
+    - name: Show Customer Service pods
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - get
+          - pods
+          - -l
+          - app=customer-service
+          - -o
+          - wide
+      register: customer_pods
+      changed_when: false
+
+    - name: Display Customer Service pods
+      ansible.builtin.debug:
+        var: customer_pods.stdout_lines

@@ -1,0 +1,124 @@
+---
+- name: Deploy BankOps MySQL and Customer Service
+  hosts: local
+  connection: local
+  gather_facts: false
+
+  vars:
+    project_root: "{{ playbook_dir }}/../.."
+
+  tasks:
+    - name: Verify Minikube Kubernetes access
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - get
+          - nodes
+      register: cluster_check
+      changed_when: false
+
+    - name: Show Kubernetes nodes
+      ansible.builtin.debug:
+        var: cluster_check.stdout_lines
+
+    - name: Apply MySQL Secret
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - apply
+          - -f
+          - "{{ project_root }}/k8s/base/mysql/secret.yaml"
+      register: mysql_secret_result
+      changed_when: "'created' in mysql_secret_result.stdout or 'configured' in mysql_secret_result.stdout"
+      no_log: true
+
+    - name: Apply MySQL Service
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - apply
+          - -f
+          - "{{ project_root }}/k8s/base/mysql/service.yaml"
+      register: mysql_service_result
+      changed_when: "'created' in mysql_service_result.stdout or 'configured' in mysql_service_result.stdout"
+
+    - name: Apply MySQL StatefulSet
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - apply
+          - -f
+          - "{{ project_root }}/k8s/base/mysql/statefulset.yaml"
+      register: mysql_statefulset_result
+      changed_when: "'created' in mysql_statefulset_result.stdout or 'configured' in mysql_statefulset_result.stdout"
+
+    - name: Wait for MySQL StatefulSet rollout
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - rollout
+          - status
+          - statefulset/mysql
+          - --timeout=180s
+      changed_when: false
+
+    - name: Apply Customer Service Service
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - apply
+          - -f
+          - "{{ project_root }}/k8s/base/customer-service-service.yaml"
+      register: customer_service_result
+      changed_when: "'created' in customer_service_result.stdout or 'configured' in customer_service_result.stdout"
+
+    - name: Apply Customer Service Deployment
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - apply
+          - -f
+          - "{{ project_root }}/k8s/base/customer-service-deployment.yaml"
+      register: customer_deployment_result
+      changed_when: "'created' in customer_deployment_result.stdout or 'configured' in customer_deployment_result.stdout"
+
+    - name: Wait for Customer Service rollout
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - rollout
+          - status
+          - deployment/customer-service
+          - --timeout=180s
+      changed_when: false
+
+    - name: Display deployed resources
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - get
+          - deployments,statefulsets,services,pods
+      register: deployed_resources
+      changed_when: false
+
+    - name: Show deployment status
+      ansible.builtin.debug:
+        var: deployed_resources.stdout_lines
