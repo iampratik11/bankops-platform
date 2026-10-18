@@ -1,0 +1,49 @@
+- name: Apply MySQL Secret from Ansible Vault
+  block:
+    - name: Create temporary MySQL Secret manifest
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .yaml
+      register: mysql_secret_temp
+      no_log: true
+
+    - name: Set restrictive permissions on temporary manifest
+      ansible.builtin.file:
+        path: "{{ mysql_secret_temp.path }}"
+        mode: "0600"
+      no_log: true
+
+    - name: Decrypt MySQL Secret manifest
+      ansible.builtin.command:
+        argv:
+          - ansible-vault
+          - decrypt
+          - --vault-password-file
+          - "{{ lookup('env', 'HOME') }}/.vault_pass_bankops"
+          - --output
+          - "{{ mysql_secret_temp.path }}"
+          - "{{ project_root }}/k8s/base/mysql/secret.yaml.vault"
+      no_log: true
+
+    - name: Apply decrypted MySQL Secret
+      ansible.builtin.command:
+        argv:
+          - minikube
+          - kubectl
+          - --
+          - apply
+          - -f
+          - "{{ mysql_secret_temp.path }}"
+      register: mysql_secret_result
+      changed_when: "'created' in mysql_secret_result.stdout or 'configured' in mysql_secret_result.stdout"
+      no_log: true
+
+  always:
+    - name: Remove temporary MySQL Secret manifest
+      ansible.builtin.file:
+        path: "{{ mysql_secret_temp.path }}"
+        state: absent
+      when:
+        - mysql_secret_temp is defined
+        - mysql_secret_temp.path is defined
+      no_log: true

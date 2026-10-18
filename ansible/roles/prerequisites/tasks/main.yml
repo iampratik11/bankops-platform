@@ -1,0 +1,15 @@
+---
+- name: Verify Minikube Kubernetes access
+  ansible.builtin.command:
+    argv:
+      - minikube
+      - kubectl
+      - --
+      - get
+      - nodes
+  register: cluster_check
+  changed_when: false
+
+- name: Show Kubernetes nodes
+  ansible.builtin.debug:
+    var: cluster_check.stdout_lines

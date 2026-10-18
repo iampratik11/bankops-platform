@@ -1,0 +1,36 @@
+---
+- name: Apply Customer Service Service
+  ansible.builtin.command:
+    argv:
+      - minikube
+      - kubectl
+      - --
+      - apply
+      - -f
+      - "{{ project_root }}/k8s/base/customer-service-service.yaml"
+  register: customer_service_result
+  changed_when: "'created' in customer_service_result.stdout or 'configured' in customer_service_result.stdout"
+
+- name: Apply Customer Service Deployment
+  ansible.builtin.command:
+    argv:
+      - minikube
+      - kubectl
+      - --
+      - apply
+      - -f
+      - "{{ project_root }}/k8s/base/customer-service-deployment.yaml"
+  register: customer_deployment_result
+  changed_when: "'created' in customer_deployment_result.stdout or 'configured' in customer_deployment_result.stdout"
+
+- name: Wait for Customer Service rollout
+  ansible.builtin.command:
+    argv:
+      - minikube
+      - kubectl
+      - --
+      - rollout
+      - status
+      - deployment/customer-service
+      - --timeout=180s
+  changed_when: false
